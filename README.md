@@ -68,6 +68,21 @@ You should set exactly one of the following:
 - `pool=<name>`: backup all VMs/CTs in a pool
 - `all` or `all=true`: backup everything
 
+## Disk Space and Cache Management
+
+When backing up large virtual machines or containers, temporary files and cache metadata can consume a significant amount of local disk space.
+
+There are two main areas of disk usage to consider:
+
+1. **Proxmox VZDump Temporary Files**:
+   By default, Proxmox creates a temporary dump in the directory configured by `dump_dir` (default: `/var/lib/vz/dump`). If `cleanup` is set to `true` (default), these files are automatically deleted after Plakar finishes importing them.
+
+2. **Plakar Cache and Stage Packfiles**:
+   Plakar stores metadata and indexes in a local cache (by default under `~/.cache/plakar`) and creates temporary "packfiles" on disk during backup operations before sending them to the repository.
+   When backing up large VMs, this cache and the temporary packfiles can quickly fill up the system partition. You can redirect them to a larger mount point using the following `plakar backup` subcommand flags:
+   - `-cache <path>`: Specifies a custom directory for the VFS cache. Set to `no` to disable caching, or `vfs` (default) for in-memory caching.
+   - `-packfiles <path>`: Specifies a directory where temporary packfiles will be staged. Set to `memory` (default) to build them entirely in RAM.
+
 ## Backup File Structure
 
 Each backed-up VM/CT produces a dump object under `/backup/<type>/<vmid>_<vmname>/`:
@@ -103,6 +118,9 @@ $ plakar at /tmp/example backup -o vmid=101 @myProxmoxHypervisorSrc
 $ plakar at /tmp/example backup -o pool=prod @myProxmoxHypervisorSrc
 $ plakar at /tmp/example backup -o all @myProxmoxHypervisorSrc 
 $ plakar at /tmp/example backup -o vmid=101 -o cleanup=false @myProxmoxHypervisorSrc 
+
+# Backup VM / CT with custom cache and packfiles paths (redirected to a larger storage)
+$ plakar at /tmp/example backup -cache /mnt/large-disk/cache -packfiles /mnt/large-disk/packfiles -o vmid=101 @myProxmoxHypervisorSrc
 
 # Configure a Proxmox local destination
 $ plakar destination add myProxmoxHypervisorLocal proxmox+backup://10.0.0.10 mode=local

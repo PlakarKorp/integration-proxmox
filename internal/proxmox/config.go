@@ -23,9 +23,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const DefaultDumpDir = "/var/lib/vz/dump"
+
+const (
+	DefaultSSHRetryCount = 3
+	DefaultSSHRetryDelay = 2 * time.Second
+)
 
 const (
 	ModeLocal  = "local"
@@ -52,6 +58,8 @@ type Config struct {
 	BackupMode        string
 	Node              string
 	Cleanup           bool
+	SSHRetryCount     int
+	SSHRetryDelay     time.Duration
 }
 
 func ParseConfig(config map[string]string) (*Config, error) {
@@ -148,6 +156,24 @@ func ParseConfig(config map[string]string) (*Config, error) {
 	}
 	cfg.Cleanup = cleanup
 
+	sshRetryCount, err := parseInt(config, "ssh_retry_count", DefaultSSHRetryCount)
+	if err != nil {
+		return nil, err
+	}
+	if sshRetryCount < 0 {
+		return nil, fmt.Errorf("invalid ssh_retry_count value: %d", sshRetryCount)
+	}
+	cfg.SSHRetryCount = sshRetryCount
+
+	sshRetryDelay, err := parseDuration(config, "ssh_retry_delay", DefaultSSHRetryDelay)
+	if err != nil {
+		return nil, err
+	}
+	if sshRetryDelay < 0 {
+		return nil, fmt.Errorf("invalid ssh_retry_delay value: %s", sshRetryDelay)
+	}
+	cfg.SSHRetryDelay = sshRetryDelay
+
 	return cfg, nil
 }
 
@@ -166,6 +192,30 @@ func parseBool(config map[string]string, key string, defaultValue bool) (bool, e
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return false, fmt.Errorf("invalid %s value: %s", key, value)
+	}
+	return parsed, nil
+}
+
+func parseInt(config map[string]string, key string, defaultValue int) (int, error) {
+	value := strings.TrimSpace(config[key])
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value: %s", key, value)
+	}
+	return parsed, nil
+}
+
+func parseDuration(config map[string]string, key string, defaultValue time.Duration) (time.Duration, error) {
+	value := strings.TrimSpace(config[key])
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value: %s", key, value)
 	}
 	return parsed, nil
 }

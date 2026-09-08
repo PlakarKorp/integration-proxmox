@@ -91,6 +91,17 @@
       "description": "Delete temporary vzdump files after operations",
       "default": true
     },
+    "ssh_retry_count": {
+      "type": "integer",
+      "description": "Number of retries for a failed SSH action (channel/session open) when mode=remote",
+      "minimum": 0,
+      "default": 3
+    },
+    "ssh_retry_delay": {
+      "type": "string",
+      "description": "Delay between SSH retries when mode=remote, as a Go duration (e.g. \"2s\")",
+      "default": "2s"
+    },
     "vmid": {
       "type": "integer",
       "description": "Backup one VM/CT by ID",

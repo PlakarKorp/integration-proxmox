@@ -26,13 +26,20 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
 type SSHRunner struct {
+	dial func() (*ssh.Client, error)
+
+	mu     sync.Mutex
 	client *ssh.Client
+
+	maxRetries int
+	retryDelay time.Duration
 }
 
 func NewSSHRunner(cfg *Config) (*SSHRunner, error) {
@@ -70,16 +77,73 @@ func NewSSHRunner(cfg *Config) (*SSHRunner, error) {
 	}
 
 	addr := normalizeSSHAddr(cfg.Host)
-	client, err := ssh.Dial("tcp", addr, clientCfg)
+	dial := func() (*ssh.Client, error) {
+		return ssh.Dial("tcp", addr, clientCfg)
+	}
+
+	client, err := dial()
 	if err != nil {
 		return nil, fmt.Errorf("ssh dial failed: %w", err)
 	}
 
-	return &SSHRunner{client: client}, nil
+	return &SSHRunner{
+		dial:       dial,
+		client:     client,
+		maxRetries: cfg.SSHRetryCount,
+		retryDelay: cfg.SSHRetryDelay,
+	}, nil
+}
+
+func (r *SSHRunner) newSession(ctx context.Context) (*ssh.Session, error) {
+	var lastErr error
+	for attempt := 0; attempt <= r.maxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(r.retryDelay):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			if err := r.reconnect(); err != nil {
+				lastErr = fmt.Errorf("ssh reconnect failed: %w", err)
+				continue
+			}
+		}
+
+		session, err := r.currentClient().NewSession()
+		if err == nil {
+			return session, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("ssh session open failed after %d attempt(s): %w", r.maxRetries+1, lastErr)
+}
+
+func (r *SSHRunner) currentClient() *ssh.Client {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.client
+}
+
+func (r *SSHRunner) reconnect() error {
+	client, err := r.dial()
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	old := r.client
+	r.client = client
+	r.mu.Unlock()
+
+	if old != nil {
+		_ = old.Close()
+	}
+	return nil
 }
 
 func (r *SSHRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
-	session, err := r.client.NewSession()
+	session, err := r.newSession(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -102,7 +166,7 @@ func (r *SSHRunner) Run(ctx context.Context, name string, args ...string) (strin
 }
 
 func (r *SSHRunner) Stream(ctx context.Context, name string, args ...string) (*CommandStream, error) {
-	session, err := r.client.NewSession()
+	session, err := r.newSession(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +209,7 @@ func (r *SSHRunner) Stream(ctx context.Context, name string, args ...string) (*C
 }
 
 func (r *SSHRunner) Open(ctx context.Context, filepath string) (io.ReadCloser, error) {
-	session, err := r.client.NewSession()
+	session, err := r.newSession(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +237,7 @@ func (r *SSHRunner) Open(ctx context.Context, filepath string) (io.ReadCloser, e
 }
 
 func (r *SSHRunner) Create(ctx context.Context, filepath string) (io.WriteCloser, error) {
-	session, err := r.client.NewSession()
+	session, err := r.newSession(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -239,8 +303,8 @@ func (r *SSHRunner) Remove(ctx context.Context, filepath string) error {
 }
 
 func (r *SSHRunner) Close() error {
-	if r.client != nil {
-		return r.client.Close()
+	if client := r.currentClient(); client != nil {
+		return client.Close()
 	}
 	return nil
 }

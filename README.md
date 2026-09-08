@@ -38,6 +38,8 @@ The configuration parameters are as follows:
 - `dump_dir` (optional): Directory used by Proxmox to store dump archives (defaults to `/var/lib/vz/dump`). It is used for restore uploads and for backup generation in both modes.
 - `node` (optional): Proxmox node to target for restore/upload operations (required if your cluster has multiple nodes)
 - `cleanup` (optional): When `true`, delete temporary vzdump files from Proxmox storage after restore and after backups (defaults to `true`).
+- `ssh_retry_count` (optional, only used when `mode=remote`): Number of retries when an SSH action fails to open a channel/session (e.g. `ssh: rejected: connect failed (open failed)` on a stale connection). Defaults to `3`. Set to `0` to disable retries.
+- `ssh_retry_delay` (optional, only used when `mode=remote`): Delay to wait between SSH retries, as a Go duration (e.g. `2s`, `500ms`, `1m`). Defaults to `2s`.
 
 ## Restore behavior and options
 
@@ -112,6 +114,9 @@ $ plakar source add myProxmoxHypervisorRemote proxmox+backup://10.0.0.10 mode=re
 
 # Configure a Proxmox remote source (with identity auth)
 $ plakar source add myProxmoxHypervisorRemote proxmox+backup://10.0.0.10 mode=remote conn_username=root conn_identity_file=/path/to/somewhere/pmx_id conn_method=identity
+
+# Configure a Proxmox remote source with custom SSH retry behavior
+$ plakar source add myProxmoxHypervisorRemote proxmox+backup://10.0.0.10 mode=remote conn_username=root conn_identity_file=/path/to/somewhere/pmx_id conn_method=identity ssh_retry_count=5 ssh_retry_delay=5s
 
 # Backup VM / CT
 $ plakar at /tmp/example backup -o vmid=101 @myProxmoxHypervisorSrc
@@ -209,5 +214,9 @@ Restore (exporter) commands:
 ### Remote Mode and SSH Notes
 
 Remote mode exists to avoid installing extra binaries on the hypervisor and to centralize multiple Proxmox backups from a single "backup relay".
+
+A single SSH connection is kept open and reused for the whole backup/restore job (vzdump execution, archive read/write, config/pool sidecar reads, cleanup, ...). On a long-running job (e.g. a large LXC/QEMU dump taking tens of minutes), that connection can become stale (idle timeouts on a NAT/firewall/VPN sitting between Plakar and Proxmox, a heavily loaded Proxmox node, a flaky link, ...), which typically surfaces as an SSH channel-open failure such as:
+
+To make this resilient, every SSH action (opening a channel to run a command, read/write a file, ...) is retried on failure: the SSH connection is re-dialed and the action is attempted again, up to `ssh_retry_count` times (default `3`), waiting `ssh_retry_delay` between attempts (default `2s`). Set `ssh_retry_count=0` to disable retries and fail immediately, as before.
 
 Security (TODO ?) note: the SSH implementation currently disables host key verification (`InsecureIgnoreHostKey`). This keeps setup simple but trades away strict host identity checks. If you require stricter security, add host key verification before using remote mode in production.

@@ -45,13 +45,17 @@ func NewSSHRunner(cfg *Config) (*SSHRunner, error) {
 	case ConnMethodPassword:
 		auth = ssh.Password(cfg.ConnPassword)
 	case ConnMethodIdentity:
-		key, err := os.ReadFile(cfg.ConnIdentityFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read identity file: %w", err)
+		key := []byte(cfg.ConnIdentityKey)
+		if cfg.ConnIdentityFile != "" {
+			var err error
+			key, err = os.ReadFile(cfg.ConnIdentityFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read identity file: %w", err)
+			}
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse identity file: %w", err)
+			return nil, fmt.Errorf("failed to parse identity key: %w", err)
 		}
 		auth = ssh.PublicKeys(signer)
 	default:

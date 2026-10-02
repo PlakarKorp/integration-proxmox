@@ -23,7 +23,8 @@ The configuration parameters are as follows:
     - `identity` : Plakar will use a private key to connect with the set username
 - `conn_username` (required if mode : `remote`): Proxmox user that will be used to connect and perform backup
 - `conn_password` (required if conn_method : `password` ): Password that will be used to connect remotely and perform the backup
-- `conn_identity_file` (required if conn_method : `identity` ): Identitfy key file path used to connect
+- `conn_identity_file` (required if conn_method : `identity` and `conn_identity_key` is not set): Identify key file path used to connect
+- `conn_identity_key` (required if conn_method : `identity` and `conn_identity_file` is not set): Private key content used to connect, mutually exclusive with `conn_identity_file`
 - `backup_compression` (optional): Backup compression mode used by proxmox when dumping the VM / CT (defaults to `0`) :
     - `0` : No compression applied
     - `1` : Proxmox default compression

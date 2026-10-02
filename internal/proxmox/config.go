@@ -46,6 +46,7 @@ type Config struct {
 	ConnUsername      string
 	ConnPassword      string
 	ConnIdentityFile  string
+	ConnIdentityKey   string
 	DumpDir           string
 	BackupCompression string
 	BackupMode        string
@@ -113,12 +114,18 @@ func ParseConfig(config map[string]string) (*Config, error) {
 			}
 		case ConnMethodIdentity:
 			cfg.ConnIdentityFile = strings.TrimSpace(config["conn_identity_file"])
-			if cfg.ConnIdentityFile == "" {
-				return nil, fmt.Errorf("missing conn_identity_file")
+			cfg.ConnIdentityKey = config["conn_identity_key"]
+			if cfg.ConnIdentityFile != "" && cfg.ConnIdentityKey != "" {
+				return nil, fmt.Errorf("conn_identity_file and conn_identity_key are mutually exclusive")
 			}
-			cfg.ConnIdentityFile, err = expandPath(cfg.ConnIdentityFile)
-			if err != nil {
-				return nil, err
+			if cfg.ConnIdentityFile == "" && cfg.ConnIdentityKey == "" {
+				return nil, fmt.Errorf("missing conn_identity_file or conn_identity_key")
+			}
+			if cfg.ConnIdentityFile != "" {
+				cfg.ConnIdentityFile, err = expandPath(cfg.ConnIdentityFile)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

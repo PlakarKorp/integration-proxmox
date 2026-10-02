@@ -1,0 +1,4 @@
+/proxmoxImporter
+/proxmoxExporter
+*.ptar
+coverage.*
